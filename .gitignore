@@ -1,0 +1,30 @@
+# ── Build outputs ─────────────────────────────────────────
+build/
+dist/
+
+# ── Binarios de rclone (se descargan en el build) ─────────
+rclone.exe
+rclone
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+venv/
+.venv/
+env/
+
+# ── OS ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDEs ──────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
