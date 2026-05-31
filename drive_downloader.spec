@@ -7,6 +7,8 @@ from PyInstaller.utils.hooks import collect_data_files
 ctk_datas = collect_data_files("customtkinter")
 
 APP_NAME   = 'CloudDownloader'
+ICON_WIN   = os.path.join(SPECPATH, 'assets', 'icon.ico')
+ICON_MAC   = os.path.join(SPECPATH, 'assets', 'icon.icns')
 rclone_bin = 'rclone.exe' if sys.platform == 'win32' else 'rclone'
 rclone_src = os.path.join(SPECPATH, rclone_bin)
 
@@ -61,6 +63,7 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         coll,
         name=f'{APP_NAME}.app',
+        icon=ICON_MAC,
         bundle_identifier='com.clouddownloader.app',
         info_plist={
             'NSHighResolutionCapable': 'True',
@@ -87,5 +90,5 @@ else:
         runtime_tmpdir=None,
         console=False,
         disable_windowed_traceback=False,
-        icon=None,
+        icon=ICON_WIN,
     )
