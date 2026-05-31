@@ -1,0 +1,57 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # necesario para crear releases y subir assets
+
+jobs:
+  build-windows:
+    name: Windows — build & publish
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Extrae "1.2.3" del tag "v1.2.3" y actualiza version.json
+      # Así el .exe embebe la versión correcta para el auto-update
+      - name: Stamp version.json
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $json = Get-Content version.json | ConvertFrom-Json
+          $json.version = $version
+          $json | ConvertTo-Json | Set-Content version.json
+          Write-Host "Version stamped: $version"
+
+      - name: Install Python dependencies
+        run: pip install customtkinter pyinstaller
+
+      - name: Download rclone
+        shell: pwsh
+        run: |
+          $url = "https://downloads.rclone.org/rclone-current-windows-amd64.zip"
+          Invoke-WebRequest -Uri $url -OutFile rclone.zip -UseBasicParsing
+          Expand-Archive -Path rclone.zip -DestinationPath rclone_tmp -Force
+          Get-ChildItem -Path rclone_tmp -Filter rclone.exe -Recurse `
+            | Select-Object -First 1 `
+            | Copy-Item -Destination .
+          Remove-Item rclone_tmp, rclone.zip -Recurse -Force
+
+      - name: Build with PyInstaller
+        run: python -m PyInstaller drive_downloader.spec --clean --noconfirm
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/CloudDownloader.exe
+          generate_release_notes: true

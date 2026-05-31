@@ -20,7 +20,7 @@ a = Analysis(
     [os.path.join(SPECPATH, 'src', 'drive_downloader_ui.py')],
     pathex=[SPECPATH, os.path.join(SPECPATH, 'src')],
     binaries=[(rclone_src, '.')],   # rclone queda en sys._MEIPASS
-    datas=ctk_datas,
+    datas=ctk_datas + [('version.json', '.')],
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
