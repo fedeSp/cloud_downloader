@@ -13,8 +13,10 @@ import customtkinter as ctk
 from config import PROVIDERS, GDOCS_EXPORT
 from rclone import provider_is_configured
 from download import run_downloads
+from updater import check_for_update, get_current_version
 from ui.auth_dialog import show_auth_dialog
 from ui.queue_panel import QueuePanel
+from ui.update_dialog import show_update_dialog
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -31,6 +33,7 @@ class App(ctk.CTk):
         self._current_process  = None
 
         self._build_ui()
+        self.after(2000, self._check_for_update)
 
     # ── UI Construction ───────────────────────────────────────────────
 
@@ -52,6 +55,13 @@ class App(ctk.CTk):
             header, text="Cloud Downloader",
             font=ctk.CTkFont(size=20, weight="bold"),
         ).pack(side="left", padx=18)
+
+        version = get_current_version()
+        ctk.CTkLabel(
+            header, text=f"v{version}",
+            text_color=("gray50", "gray60"),
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left", padx=(0, 8))
 
         self._theme_btn = ctk.CTkButton(
             header, text="Oscuro", width=90, height=32,
@@ -306,6 +316,12 @@ class App(ctk.CTk):
         if self._current_process:
             self._current_process.terminate()
         self._log("Cancelando...")
+
+    def _check_for_update(self):
+        def on_available(new_version, url):
+            self.after(0, lambda v=new_version, u=url: show_update_dialog(self, v, u))
+
+        check_for_update(on_update_available=on_available)
 
 
 if __name__ == "__main__":
