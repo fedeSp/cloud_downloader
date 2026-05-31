@@ -55,3 +55,69 @@ jobs:
         with:
           files: dist/CloudDownloader.exe
           generate_release_notes: true
+
+  build-macos:
+    name: macOS — build & publish
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Stamp version.json
+        run: |
+          version="${{ github.ref_name }}"
+          version="${version#v}"
+          python3 -c "
+          import json, pathlib
+          p = pathlib.Path('version.json')
+          d = json.loads(p.read_text())
+          d['version'] = '$version'
+          p.write_text(json.dumps(d, indent=2))
+          "
+          echo "Version stamped: $version"
+
+      - name: Install Python dependencies
+        run: pip install customtkinter pyinstaller
+
+      - name: Download rclone
+        run: |
+          ARCH=$(uname -m)
+          if [[ "$ARCH" == "arm64" ]]; then
+            URL="https://downloads.rclone.org/rclone-current-osx-arm64.zip"
+          else
+            URL="https://downloads.rclone.org/rclone-current-osx-amd64.zip"
+          fi
+          curl -fsSL "$URL" -o rclone.zip
+          unzip -q -j rclone.zip "*/rclone" -d .
+          chmod +x rclone
+          rm rclone.zip
+
+      - name: Build with PyInstaller
+        run: python3 -m PyInstaller drive_downloader.spec --clean --noconfirm
+
+      - name: Remove quarantine attribute
+        run: xattr -rd com.apple.quarantine "dist/CloudDownloader.app" 2>/dev/null || true
+
+      - name: Create .dmg
+        run: |
+          mkdir -p dist/dmg_tmp
+          cp -r "dist/CloudDownloader.app" dist/dmg_tmp/
+          ln -s /Applications dist/dmg_tmp/Applications
+          hdiutil create \
+            -volname "CloudDownloader" \
+            -srcfolder dist/dmg_tmp \
+            -ov -format UDZO \
+            dist/CloudDownloader.dmg
+          rm -rf dist/dmg_tmp
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/CloudDownloader.dmg
+          generate_release_notes: false   # ya se generó en el job de Windows
