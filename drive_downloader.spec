@@ -18,7 +18,7 @@ if not os.path.exists(rclone_src):
 
 a = Analysis(
     [os.path.join(SPECPATH, 'src', 'drive_downloader_ui.py')],
-    pathex=[SPECPATH],
+    pathex=[SPECPATH, os.path.join(SPECPATH, 'src')],
     binaries=[(rclone_src, '.')],   # rclone queda en sys._MEIPASS
     datas=ctk_datas,
     hiddenimports=[],
