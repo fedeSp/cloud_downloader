@@ -36,6 +36,9 @@ Bajá la última versión desde [Releases](https://github.com/fedeSp/cloud_downl
 | Windows    | `CloudDownloader.exe` |
 | macOS      | `CloudDownloader.dmg` |
 
+> **Windows:** si aparece "aplicación desconocida", hacé clic en **Más información → Ejecutar de todas formas**.  
+> **macOS:** si aparece *"Apple could not verify..."*, **no** hagas doble clic. En cambio: **clic derecho → Abrir → Abrir**. Solo hay que hacerlo la primera vez.
+
 ### 2. Primera ejecución — conectar Google Drive
 
 Al agregar una URL de Google Drive por primera vez, la app te va a pedir que conectes tu cuenta:
