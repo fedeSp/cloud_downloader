@@ -15,6 +15,7 @@ from rclone import provider_is_configured
 from download import run_downloads
 from updater import check_for_update, get_current_version
 from ui.auth_dialog import show_auth_dialog
+from ui.file_browser_dialog import show_file_browser
 from ui.queue_panel import QueuePanel
 from ui.update_dialog import show_update_dialog
 
@@ -64,8 +65,12 @@ class App(ctk.CTk):
         ).pack(side="left", padx=(0, 8))
 
         self._theme_btn = ctk.CTkButton(
-            header, text="Oscuro", width=90, height=32,
-            fg_color="transparent", hover_color=("gray80", "gray25"),
+            header, text="Oscuro", width=100, height=32,
+            fg_color=("gray75", "gray25"),
+            hover_color=("gray65", "gray35"),
+            text_color=("gray10", "gray90"),
+            border_width=1,
+            border_color=("gray60", "gray45"),
             command=self._toggle_theme,
         )
         self._theme_btn.pack(side="right", padx=10)
@@ -73,7 +78,7 @@ class App(ctk.CTk):
         ctk.CTkButton(
             header, text="Reconectar cuenta", width=150, height=32,
             fg_color="transparent", hover_color=("gray80", "gray25"),
-            text_color=("gray40", "gray60"),
+            text_color=("gray30", "gray60"),
             command=self._reconnect_provider,
         ).pack(side="right", padx=4)
 
@@ -118,7 +123,7 @@ class App(ctk.CTk):
                      font=ctk.CTkFont(weight="bold"), anchor="w").pack(
             fill="x", padx=14, pady=(4, 2))
 
-        self._queue = QueuePanel(self, height=160)
+        self._queue = QueuePanel(self, height=180, on_browse=self._browse_item)
         self._queue.pack(fill="x", padx=12, pady=(0, 6))
 
     def _build_options(self):
@@ -229,7 +234,8 @@ class App(ctk.CTk):
     def _toggle_theme(self):
         new = "light" if ctk.get_appearance_mode() == "Dark" else "dark"
         ctk.set_appearance_mode(new)
-        self._theme_btn.configure(text="Claro" if new == "dark" else "Oscuro")
+        self._theme_btn.configure(text="Claro" if new == "dark" else "Oscuro",
+                                  text_color=("gray10", "gray90"))
 
     def _update_url_hint(self, *_):
         hints = {
@@ -252,6 +258,31 @@ class App(ctk.CTk):
             return
         self._queue.add(self._provider_var.get(), url, folder)
         self._url_entry.delete(0, "end")
+
+    def _browse_item(self, idx: int):
+        items = self._queue.items
+        if not 0 <= idx < len(items):
+            return
+        item = items[idx]
+        pkey = item["provider"]
+        if not provider_is_configured(pkey):
+            name = PROVIDERS[pkey]["name"]
+            if not messagebox.askyesno(
+                "Autenticacion requerida",
+                f"Necesitas conectar {name} primero.\nConectar ahora?",
+            ):
+                return
+            if not show_auth_dialog(self, pkey):
+                return
+        export_fmt = GDOCS_EXPORT.get(self._export_var.get(), "")
+        selected   = show_file_browser(self, item, export_fmt)
+        # selected is None  = user cancelled (no change)
+        # selected is []    = confirmed with empty selection (keep previous)
+        # selected is list  = specific paths chosen
+        if selected is None:
+            return  # cancelled
+        item["selected_files"] = selected if selected else None
+        self._queue.refresh()
 
     def _reconnect_provider(self):
         pkey = self._provider_var.get()

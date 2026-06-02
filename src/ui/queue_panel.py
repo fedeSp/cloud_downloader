@@ -7,10 +7,11 @@ from config import PROVIDERS
 class QueuePanel(ctk.CTkScrollableFrame):
     """Scrollable list of pending download items."""
 
-    def __init__(self, parent, **kwargs):
+    def __init__(self, parent, on_browse=None, **kwargs):
         super().__init__(parent, **kwargs)
         self._items: list[dict] = []
         self._rows:  list       = []
+        self._on_browse = on_browse  # callable(idx) -> None
         self.refresh()
 
     # ── Public API ────────────────────────────────────────────────────
@@ -80,6 +81,43 @@ class QueuePanel(ctk.CTkScrollableFrame):
                 command=lambda ix=i: self.remove(ix),
             ).pack(side="right", padx=6, pady=(6, 2))
 
+            # — Explorar / selection row —
+            sel_row = ctk.CTkFrame(row, fg_color="transparent")
+            sel_row.pack(fill="x")
+
+            selected = item.get("selected_files")  # None = all, list = specific
+            if selected is not None:
+                n_files = sum(1 for p in selected if not p.endswith("/"))
+                n_dirs  = sum(1 for p in selected if p.endswith("/"))
+                parts   = []
+                if n_files:
+                    parts.append(f"{n_files} archivo(s)")
+                if n_dirs:
+                    parts.append(f"{n_dirs} carpeta(s) completa(s)")
+                sel_text  = "☑ " + ", ".join(parts) if parts else "☑ (sin selección)"
+                sel_color = ("#2a7d2a", "#4caf50") if parts else ("orange", "#e6a817")
+            else:
+                sel_text  = "Descargar todo"
+                sel_color = ("gray40", "gray60")
+
+            ctk.CTkLabel(
+                sel_row,
+                text=f"  ↳  {sel_text}",
+                anchor="w",
+                text_color=sel_color,
+                font=ctk.CTkFont(size=13),
+            ).pack(side="left", fill="x", expand=True, padx=(74, 4))
+
+            if self._on_browse is not None:
+                ctk.CTkButton(
+                    sel_row, text="Explorar", width=100, height=26,
+                    fg_color="transparent",
+                    hover_color=("gray80", "gray30"),
+                    text_color=("gray40", "gray60"),
+                    font=ctk.CTkFont(size=13),
+                    command=lambda ix=i: self._on_browse(ix),
+                ).pack(side="right", padx=(2, 6))
+
             # — Destination row —
             dest_row = ctk.CTkFrame(row, fg_color="transparent")
             dest_row.pack(fill="x", pady=(0, 4))
@@ -91,14 +129,14 @@ class QueuePanel(ctk.CTkScrollableFrame):
                 text=f"  →  {dest_text[:65] + ('...' if len(dest_text) > 65 else '')}",
                 anchor="w",
                 text_color=dest_color,
-                font=ctk.CTkFont(size=11),
+                font=ctk.CTkFont(size=13),
             ).pack(side="left", fill="x", expand=True, padx=(74, 4))
 
             ctk.CTkButton(
-                dest_row, text="Elegir destino", width=110, height=24,
+                dest_row, text="Elegir destino", width=120, height=26,
                 fg_color="transparent",
                 hover_color=("gray80", "gray30"),
-                text_color=("gray50", "gray60"),
-                font=ctk.CTkFont(size=11),
+                text_color=("gray40", "gray60"),
+                font=ctk.CTkFont(size=13),
                 command=lambda ix=i: self.choose_dest(ix),
             ).pack(side="right", padx=6)

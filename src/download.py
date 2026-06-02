@@ -59,6 +59,16 @@ def run_downloads(queue_items, extensions, export_fmt,
                         f for f in files
                         if any(f["Path"].lower().endswith(f".{ext}") for ext in extensions)
                     ]
+                # Filter by user-selected paths (from the file browser)
+                selected = item.get("selected_files")  # None = all
+                if selected is not None:
+                    dir_prefixes = [s for s in selected if s.endswith("/")]
+                    file_exact   = {s for s in selected if not s.endswith("/")}
+                    files = [
+                        f for f in files
+                        if f["Path"] in file_exact
+                        or any(f["Path"].startswith(p) for p in dir_prefixes)
+                    ]
                 for f in files:
                     all_tasks.append((item, remote_path, extra_args, f))
                 log_cb(f"Carpeta: {item['url'][:55]}: {len(files)} archivo(s)")
