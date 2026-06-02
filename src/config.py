@@ -1,7 +1,7 @@
 PROVIDERS = {
     "drive":    {"name": "Google Drive", "rclone_type": "drive",    "remote": "drive"},
     #"onedrive": {"name": "OneDrive",     "rclone_type": "onedrive", "remote": "onedrive"},
-    #"dropbox":  {"name": "Dropbox",      "rclone_type": "dropbox",  "remote": "dropbox"},
+    "dropbox":  {"name": "Dropbox",      "rclone_type": "dropbox",  "remote": "dropbox"},
 }
 
 GDOCS_EXPORT = {
