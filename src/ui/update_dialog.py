@@ -1,4 +1,7 @@
+import webbrowser
 import customtkinter as ctk
+
+RELEASES_URL = "https://github.com/fedeSp/cloud_downloader/releases/latest"
 
 
 def show_update_dialog(parent, new_version: str, download_url: str):
@@ -53,8 +56,10 @@ def show_update_dialog(parent, new_version: str, download_url: str):
 
         def on_error(msg):
             parent.after(0, lambda: status_lbl.configure(
-                text=f"Error: {msg}", text_color=("red", "#ef5350")))
-            parent.after(0, lambda: update_btn.configure(state="normal"))
+                text=f"No se pudo instalar automaticamente.", text_color=("red", "#ef5350")))
+            parent.after(0, lambda: update_btn.configure(
+                state="normal", text="Descargar desde web",
+                command=lambda: webbrowser.open(RELEASES_URL)))
             parent.after(0, lambda: skip_btn.configure(state="normal"))
 
         download_and_apply(download_url, progress_cb=progress, error_cb=on_error)
