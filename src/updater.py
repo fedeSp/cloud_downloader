@@ -119,8 +119,10 @@ def download_and_apply(download_url: str, progress_cb=None, error_cb=None):
                     error_cb("Auto-update solo funciona en el ejecutable empaquetado.")
                 return
 
-            exe_dir     = os.path.dirname(current_exe)
-            new_exe     = os.path.join(exe_dir, "_CloudDownloader_new.exe")
+            # Descargar a %TEMP% para que no aparezca junto al .exe actual
+            suffix = ".exe" if sys.platform == "win32" else ".dmg"
+            fd, new_exe = tempfile.mkstemp(suffix=suffix, prefix="CloudDownloader_new_")
+            os.close(fd)
 
             # Descargar
             req = urllib.request.Request(
