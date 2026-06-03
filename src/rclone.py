@@ -149,28 +149,42 @@ def list_dropbox_shared_entries(shared_url: str, token: str) -> list:
     """Return all entries (files + folders) inside a Dropbox shared folder link.
 
     Each entry: {"Path": str, "Name": str, "IsDir": bool}
+
+    NOTE: Dropbox API does NOT support recursive=True with shared_link,
+    so we recurse manually by listing each subfolder.
     """
-    entries = []
-    data = _dbx_api(
-        "https://api.dropboxapi.com/2/files/list_folder",
-        {"path": "", "shared_link": {"url": shared_url},
-         "recursive": True, "include_deleted": False},
-        token,
-    )
-    while True:
-        for e in data.get("entries", []):
-            entries.append({
-                "Path":  e["path_lower"].lstrip("/"),
-                "Name":  e["name"],
-                "IsDir": e.get(".tag") == "folder",
-            })
-        if not data.get("has_more"):
-            break
+    all_entries = []
+
+    def _list_path(subpath: str):
+        """List one level at subpath (relative to the shared link root)."""
+        payload = {
+            "path": subpath,
+            "shared_link": {"url": shared_url},
+            "include_deleted": False,
+        }
         data = _dbx_api(
-            "https://api.dropboxapi.com/2/files/list_folder/continue",
-            {"cursor": data["cursor"]}, token,
+            "https://api.dropboxapi.com/2/files/list_folder", payload, token
         )
-    return entries
+        while True:
+            for e in data.get("entries", []):
+                rel_path = e["path_lower"].lstrip("/")
+                entry = {
+                    "Path":  rel_path,
+                    "Name":  e["name"],
+                    "IsDir": e.get(".tag") == "folder",
+                }
+                all_entries.append(entry)
+                if entry["IsDir"]:
+                    _list_path("/" + rel_path)
+            if not data.get("has_more"):
+                break
+            data = _dbx_api(
+                "https://api.dropboxapi.com/2/files/list_folder/continue",
+                {"cursor": data["cursor"]}, token,
+            )
+
+    _list_path("")
+    return all_entries
 
 
 def download_dropbox_shared_file(shared_url: str, file_path: str, dest_dir: str, token: str):
