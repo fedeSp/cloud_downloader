@@ -171,13 +171,26 @@ def _swap_windows(current_exe: str, new_exe: str):
     os.close(fd)
 
     script = f"""@echo off
+setlocal
+set RETRIES=0
 :wait
 tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL
 if not errorlevel 1 (
     timeout /t 1 /nobreak >NUL
     goto wait
 )
-move /Y "{new_exe}" "{current_exe}"
+timeout /t 2 /nobreak >NUL
+:retry
+copy /Y "{new_exe}" "{current_exe}" >NUL 2>&1
+if errorlevel 1 (
+    set /a RETRIES+=1
+    if %RETRIES% lss 10 (
+        timeout /t 1 /nobreak >NUL
+        goto retry
+    )
+    exit /b 1
+)
+del /F /Q "{new_exe}" >NUL 2>&1
 start "" "{current_exe}"
 del "%~f0"
 """

@@ -21,6 +21,11 @@ def build_list_cmd(item, export_fmt):
     elif provider == "onedrive":
         remote_path = f"{remote}:/{url.strip('/')}"
     elif provider == "dropbox":
+        if url.startswith("http://") or url.startswith("https://"):
+            raise ValueError(
+                "Dropbox no soporta links compartidos.\n"
+                "Ingresa la ruta dentro de tu cuenta, ej: /Fotos/Vacaciones"
+            )
         path        = url.strip("/")
         remote_path = f"{remote}:/{path}" if path else f"{remote}:/"
     else:
