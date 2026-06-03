@@ -162,29 +162,38 @@ def _launch_swap(current_exe: str, new_exe: str):
         _swap_windows(current_exe, new_exe)
     else:
         _swap_macos(current_exe, new_exe)
-    os.kill(os.getpid(), 9)  # fuerza el cierre del proceso actual
+    os._exit(0)  # salida limpia sin que el bootloader PyInstaller interfiera
 
 
 def _swap_windows(current_exe: str, new_exe: str):
-    pid    = os.getpid()
+    # En PyInstaller onefile hay dos procesos:
+    #   padre = bootloader (el que tiene el .exe abierto)
+    #   hijo  = Python (os.getpid())
+    # Hay que esperar a que AMBOS mueran antes de poder sobreescribir el exe.
+    child_pid  = os.getpid()
+    parent_pid = os.getppid()  # bootloader
     fd, bat = tempfile.mkstemp(suffix=".bat", prefix="cd_update_")
     os.close(fd)
 
     script = f"""@echo off
 setlocal
-set RETRIES=0
+set WAITED=0
 :wait
-tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL
+tasklist /FI "PID eq {parent_pid}" 2>NUL | find /I "{parent_pid}" >NUL
 if not errorlevel 1 (
-    timeout /t 1 /nobreak >NUL
-    goto wait
+    set /a WAITED+=1
+    if %WAITED% lss 20 (
+        timeout /t 1 /nobreak >NUL
+        goto wait
+    )
 )
-timeout /t 2 /nobreak >NUL
+timeout /t 1 /nobreak >NUL
+set RETRIES=0
 :retry
 copy /Y "{new_exe}" "{current_exe}" >NUL 2>&1
 if errorlevel 1 (
     set /a RETRIES+=1
-    if %RETRIES% lss 10 (
+    if %RETRIES% lss 15 (
         timeout /t 1 /nobreak >NUL
         goto retry
     )
