@@ -17,7 +17,9 @@ from tkinter import ttk, messagebox
 import customtkinter as ctk
 
 from config import PROVIDERS
-from rclone import RCLONE_PATH, _popen_kwargs, extract_drive_folder_id
+from rclone import (RCLONE_PATH, _popen_kwargs, extract_drive_folder_id,
+                    get_provider_access_token, is_dropbox_shared_link,
+                    list_dropbox_shared_entries)
 
 
 # ── Checkbox label helpers ────────────────────────────────────────────────────
@@ -55,7 +57,10 @@ class FileBrowserDialog(ctk.CTkToplevel):
 
         self._build_remote_info()
         self._build_ui()
-        self._load_children("", "")  # kick off root load
+        if self._is_dbx_shared:
+            self._load_dbx_tree()
+        else:
+            self._load_children("", "")  # kick off root load
 
         self.protocol("WM_DELETE_WINDOW", self._cancel)
 
@@ -65,6 +70,7 @@ class FileBrowserDialog(ctk.CTkToplevel):
         provider = self._item["provider"]
         url      = self._item["url"]
         remote   = PROVIDERS[provider]["remote"]
+        self._is_dbx_shared = False
 
         if provider == "drive":
             folder_id          = extract_drive_folder_id(url)
@@ -76,9 +82,16 @@ class FileBrowserDialog(ctk.CTkToplevel):
             self._remote_root  = f"{remote}:/{url.strip('/')}"
             self._extra_args   = []
         elif provider == "dropbox":
-            path               = url.strip("/")
-            self._remote_root  = f"{remote}:/{path}" if path else f"{remote}:/"
-            self._extra_args   = []
+            if is_dropbox_shared_link(url):
+                self._is_dbx_shared  = True
+                self._dbx_shared_url = url
+                self._dbx_token      = get_provider_access_token("dropbox")
+                self._remote_root    = ""
+                self._extra_args     = []
+            else:
+                path               = url.strip("/")
+                self._remote_root  = f"{remote}:/{path}" if path else f"{remote}:/"
+                self._extra_args   = []
         else:
             self._remote_root  = f"{remote}:/{url.strip('/')}"
             self._extra_args   = []
@@ -207,6 +220,51 @@ class FileBrowserDialog(ctk.CTkToplevel):
             self.after(0, lambda: self._populate(parent_node, rel_path, entries))
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _load_dbx_tree(self):
+        """Async: load the entire shared folder tree via Dropbox API (non-lazy)."""
+        self._status_var.set("Cargando desde Dropbox…")
+        url   = self._dbx_shared_url
+        token = self._dbx_token
+
+        def run():
+            try:
+                entries = list_dropbox_shared_entries(url, token)
+            except Exception as exc:
+                self.after(0, lambda e=exc: self._status_var.set(f"Error: {e}"))
+                return
+            self.after(0, lambda: self._populate_dbx_tree(entries))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _populate_dbx_tree(self, entries: list):
+        """Build the full tree from a flat list of Dropbox entries."""
+        # Shallow paths first, folders before files, then alphabetically
+        entries.sort(key=lambda e: (e["Path"].count("/"), not e["IsDir"], e["Name"].lower()))
+
+        path_to_node: dict[str, str] = {"": ""}
+
+        for entry in entries:
+            path   = entry["Path"]
+            name   = entry["Name"]
+            is_dir = entry["IsDir"]
+
+            parent_path = path.rsplit("/", 1)[0] if "/" in path else ""
+            parent_node = path_to_node.get(parent_path, "")
+
+            icon  = _DIR_ICON if is_dir else _FILE_ICON
+            label = f"{_CHECK[False]}  {icon} {name}"
+            node_id = self._tree.insert(parent_node, "end", text=label, open=False)
+
+            self._check_state[node_id] = False
+            self._node_path[node_id]   = path
+            self._node_isdir[node_id]  = is_dir
+            path_to_node[path]         = node_id
+
+        total = len(entries)
+        dirs  = sum(1 for e in entries if e["IsDir"])
+        files = total - dirs
+        self._status_var.set(f"{dirs} carpeta(s), {files} archivo(s)")
 
     def _populate(self, parent_node: str, parent_rel: str, entries: list):
         # Remove loading placeholder if present

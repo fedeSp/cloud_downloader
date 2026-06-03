@@ -241,7 +241,7 @@ class App(ctk.CTk):
         hints = {
             "drive":    "https://drive.google.com/drive/folders/...",
             "onedrive": "Documents/Proyecto X",
-            "dropbox":  "Ruta en tu cuenta, ej: /Fotos/Vacaciones  (no links compartidos)",
+            "dropbox":  "Link compartido o ruta propia, ej: https://www.dropbox.com/scl/fo/... o /Fotos",
         }
         self._url_entry.configure(
             placeholder_text=hints.get(self._provider_var.get(), ""))

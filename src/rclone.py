@@ -2,9 +2,17 @@ import os
 import re
 import sys
 import json
+import ssl
 import subprocess
+import urllib.request
 
 from config import PROVIDERS
+
+try:
+    import certifi
+    _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    _SSL_CTX = None
 
 
 def get_rclone_path():
@@ -104,3 +112,81 @@ def extract_drive_folder_id(url):
 
 
 RCLONE_PATH = get_rclone_path()
+
+
+# ── Dropbox shared-link API ───────────────────────────────────────────────────
+
+def get_provider_access_token(provider_key):
+    """Returns the OAuth access_token for a provider's configured remote, or None."""
+    config = _parse_config()
+    remote = PROVIDERS[provider_key]["remote"]
+    token_str = config.get(remote, {}).get("token", "")
+    if not token_str:
+        return None
+    try:
+        return json.loads(token_str).get("access_token")
+    except (json.JSONDecodeError, AttributeError):
+        return None
+
+
+def is_dropbox_shared_link(url: str) -> bool:
+    """True if url looks like a Dropbox shared folder/file link."""
+    return "dropbox.com/" in url and url.startswith(("http://", "https://"))
+
+
+def _dbx_api(endpoint: str, payload: dict, token: str) -> dict:
+    data = json.dumps(payload).encode()
+    req  = urllib.request.Request(
+        endpoint, data=data,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    kw = {"context": _SSL_CTX} if _SSL_CTX else {}
+    with urllib.request.urlopen(req, **kw) as resp:
+        return json.loads(resp.read())
+
+
+def list_dropbox_shared_entries(shared_url: str, token: str) -> list:
+    """Return all entries (files + folders) inside a Dropbox shared folder link.
+
+    Each entry: {"Path": str, "Name": str, "IsDir": bool}
+    """
+    entries = []
+    data = _dbx_api(
+        "https://api.dropboxapi.com/2/files/list_folder",
+        {"path": "", "shared_link": {"url": shared_url},
+         "recursive": True, "include_deleted": False},
+        token,
+    )
+    while True:
+        for e in data.get("entries", []):
+            entries.append({
+                "Path":  e["path_lower"].lstrip("/"),
+                "Name":  e["name"],
+                "IsDir": e.get(".tag") == "folder",
+            })
+        if not data.get("has_more"):
+            break
+        data = _dbx_api(
+            "https://api.dropboxapi.com/2/files/list_folder/continue",
+            {"cursor": data["cursor"]}, token,
+        )
+    return entries
+
+
+def download_dropbox_shared_file(shared_url: str, file_path: str, dest_dir: str, token: str):
+    """Download one file from a Dropbox shared folder link into dest_dir."""
+    arg = json.dumps({"url": shared_url, "path": "/" + file_path.lstrip("/")})
+    req = urllib.request.Request(
+        "https://content.dropboxapi.com/2/sharing/get_shared_link_file",
+        headers={"Authorization": f"Bearer {token}", "Dropbox-API-Arg": arg},
+    )
+    out_path = os.path.join(dest_dir, file_path.replace("/", os.sep))
+    os.makedirs(os.path.dirname(out_path) or dest_dir, exist_ok=True)
+    kw = {"context": _SSL_CTX} if _SSL_CTX else {}
+    with urllib.request.urlopen(req, **kw) as resp:
+        with open(out_path, "wb") as f:
+            while True:
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                f.write(chunk)

@@ -3,7 +3,9 @@ import subprocess
 import threading
 
 from config import PROVIDERS
-from rclone import RCLONE_PATH, _popen_kwargs, extract_drive_folder_id
+from rclone import (RCLONE_PATH, _popen_kwargs, extract_drive_folder_id,
+                    get_provider_access_token, is_dropbox_shared_link,
+                    list_dropbox_shared_entries, download_dropbox_shared_file)
 
 
 def build_list_cmd(item, export_fmt):
@@ -21,11 +23,6 @@ def build_list_cmd(item, export_fmt):
     elif provider == "onedrive":
         remote_path = f"{remote}:/{url.strip('/')}"
     elif provider == "dropbox":
-        if url.startswith("http://") or url.startswith("https://"):
-            raise ValueError(
-                "Dropbox no soporta links compartidos.\n"
-                "Ingresa la ruta dentro de tu cuenta, ej: /Fotos/Vacaciones"
-            )
         path        = url.strip("/")
         remote_path = f"{remote}:/{path}" if path else f"{remote}:/"
     else:
@@ -48,17 +45,35 @@ def run_downloads(queue_items, extensions, export_fmt,
     """
 
     def worker():
+        # tasks: (item, remote_path|None, extra_args|None, file_info, shared_url|None)
         all_tasks = []
         for item in queue_items:
             try:
-                remote_path, extra_args, list_cmd = build_list_cmd(item, export_fmt)
-                result = subprocess.run(
-                    list_cmd, capture_output=True, text=True, **_popen_kwargs()
-                )
-                if result.returncode != 0:
-                    log_cb(f"Error listando {item['url']}: {result.stderr.strip()}")
-                    continue
-                files = [f for f in json.loads(result.stdout) if not f.get("IsDir")]
+                provider = item["provider"]
+                url      = item["url"]
+
+                if provider == "dropbox" and is_dropbox_shared_link(url):
+                    token = get_provider_access_token("dropbox")
+                    if not token:
+                        log_cb("Error: no hay cuenta Dropbox configurada.")
+                        continue
+                    log_cb(f"Listando: {url[:60]}…")
+                    all_entries = list_dropbox_shared_entries(url, token)
+                    files       = [e for e in all_entries if not e["IsDir"]]
+                    shared_url  = url
+                    remote_path = None
+                    extra_args  = None
+                else:
+                    remote_path, extra_args, list_cmd = build_list_cmd(item, export_fmt)
+                    result = subprocess.run(
+                        list_cmd, capture_output=True, text=True, **_popen_kwargs()
+                    )
+                    if result.returncode != 0:
+                        log_cb(f"Error listando {url}: {result.stderr.strip()}")
+                        continue
+                    files      = [f for f in json.loads(result.stdout) if not f.get("IsDir")]
+                    shared_url = None
+
                 if extensions:
                     files = [
                         f for f in files
@@ -75,8 +90,8 @@ def run_downloads(queue_items, extensions, export_fmt,
                         or any(f["Path"].startswith(p) for p in dir_prefixes)
                     ]
                 for f in files:
-                    all_tasks.append((item, remote_path, extra_args, f))
-                log_cb(f"Carpeta: {item['url'][:55]}: {len(files)} archivo(s)")
+                    all_tasks.append((item, remote_path, extra_args, f, shared_url))
+                log_cb(f"Carpeta: {url[:55]}: {len(files)} archivo(s)")
             except Exception as exc:
                 log_cb(f"Error en {item['url']}: {exc}")
 
@@ -90,29 +105,39 @@ def run_downloads(queue_items, extensions, export_fmt,
         log_cb(f"Total: {total} archivo(s)")
 
         completed = 0
-        for item, remote_path, extra_args, file_info in all_tasks:
+        for item, remote_path, extra_args, file_info, shared_url in all_tasks:
             if get_cancel():
                 log_cb("Descarga cancelada.")
                 break
             path = file_info["Path"]
             log_cb(f"Descargando: {path}")
-            cmd = [
-                RCLONE_PATH, "copy", remote_path, item["dest"],
-                "--include", path,
-                "--create-empty-src-dirs",
-                "--transfers", "1",
-                "--ignore-existing",
-                "--log-level", "ERROR",
-            ] + extra_args
-            proc = subprocess.Popen(cmd, **_popen_kwargs())
-            set_process(proc)
-            proc.wait()
-            if proc.returncode == 0:
-                completed += 1
-                progress_cb(completed, total)
-                log_cb(f"OK: {path}")
+            if shared_url:
+                try:
+                    token = get_provider_access_token("dropbox")
+                    download_dropbox_shared_file(shared_url, path, item["dest"], token)
+                    completed += 1
+                    progress_cb(completed, total)
+                    log_cb(f"OK: {path}")
+                except Exception as exc:
+                    log_cb(f"Error: {path} — {exc}")
             else:
-                log_cb(f"Error: {path}")
+                cmd = [
+                    RCLONE_PATH, "copy", remote_path, item["dest"],
+                    "--include", path,
+                    "--create-empty-src-dirs",
+                    "--transfers", "1",
+                    "--ignore-existing",
+                    "--log-level", "ERROR",
+                ] + extra_args
+                proc = subprocess.Popen(cmd, **_popen_kwargs())
+                set_process(proc)
+                proc.wait()
+                if proc.returncode == 0:
+                    completed += 1
+                    progress_cb(completed, total)
+                    log_cb(f"OK: {path}")
+                else:
+                    log_cb(f"Error: {path}")
 
         done_cb()
 
