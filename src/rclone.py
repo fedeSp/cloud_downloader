@@ -43,7 +43,16 @@ def _parse_config():
 def provider_is_configured(provider_key):
     config = _parse_config()
     remote = PROVIDERS[provider_key]["remote"]
-    return remote in config and "token" in config[remote]
+    if remote not in config:
+        return False
+    token_str = config[remote].get("token", "")
+    if not token_str:
+        return False
+    try:
+        token_data = json.loads(token_str)
+        return bool(token_data.get("access_token"))
+    except (json.JSONDecodeError, AttributeError):
+        return False
 
 
 def write_remote_config(remote_name, rclone_type, token_json, extra=None):

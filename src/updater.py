@@ -12,11 +12,18 @@ Flujo:
 import os
 import sys
 import json
+import ssl
 import subprocess
 import tempfile
 import threading
 import urllib.request
 from urllib.error import URLError
+
+try:
+    import certifi
+    _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    _SSL_CONTEXT = None
 
 GITHUB_REPO   = "fedeSp/cloud_downloader"
 API_URL       = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -52,7 +59,8 @@ def _fetch_latest_release():
         API_URL,
         headers={"User-Agent": "CloudDownloader-updater"},
     )
-    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT,
+                                context=_SSL_CONTEXT) as resp:
         data = json.loads(resp.read().decode())
 
     tag     = data.get("tag_name", "")
@@ -119,7 +127,8 @@ def download_and_apply(download_url: str, progress_cb=None, error_cb=None):
                 download_url,
                 headers={"User-Agent": "CloudDownloader-updater"},
             )
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=120,
+                                            context=_SSL_CONTEXT) as resp:
                 total = int(resp.headers.get("Content-Length", 0))
                 downloaded = 0
                 chunk = 65536
@@ -189,6 +198,8 @@ def _swap_macos(current_exe: str, new_exe: str):
 while kill -0 {pid} 2>/dev/null; do sleep 1; done
 mv -f "{new_exe}" "{current_exe}"
 chmod +x "{current_exe}"
+# Quitar cuarentena de Gatekeeper para que no requiera re-aprobacion
+xattr -d com.apple.quarantine "{current_exe}" 2>/dev/null || true
 open "{current_exe}"
 rm -- "$0"
 """
